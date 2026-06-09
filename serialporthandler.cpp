@@ -32,7 +32,7 @@ void serialPortHandler::setPORTNAME(const QString &portName)
     }
 
     serial->setPortName(portName);
-    serial->setBaudRate(9600);
+    serial->setBaudRate(115200);
     serial->setDataBits(QSerialPort::Data8);
     serial->setParity(QSerialPort::NoParity);
     serial->setStopBits(QSerialPort::OneStop);
@@ -46,8 +46,8 @@ void serialPortHandler::setPORTNAME(const QString &portName)
     }
     else
     {
-        qDebug() << "Serial port "<<serial->portName()<<" opened successfully at baud rate 9600";
-        emit portOpening("Serial port "+serial->portName()+" opened successfully at baud rate 9600");
+        qDebug() << "Serial port "<<serial->portName()<<" opened successfully at baud rate 115200";
+        emit portOpening("Serial port "+serial->portName()+" opened successfully at baud rate 115200");
     }
 }
 
@@ -104,7 +104,10 @@ QString serialPortHandler::hexBytesSerial(QByteArray &cmd)
 
 void serialPortHandler::readData()
 {
-    qDebug()<<"------------------------------------------------------------------------------------";
+    if(id != 0x03)
+    {
+        qDebug()<<"------------------------------------------------------------------------------------";
+    }
     QByteArray ResponseData;
 
     // Read data from the serial port
@@ -127,13 +130,16 @@ void serialPortHandler::readData()
         return;
     }
 
-    qDebug()<<buffer.toHex()<<" Raw buffer data";
-    qDebug()<<buffer.size()<<" :size";
-
     //Direct taking msgId from mainWindow
     quint8 msgId = id;
     //powerId to avoid that warning QByteRef calling out of bond error
     quint8 powerId = 0x00;
+
+    if(msgId != 0x03)
+    {
+        qDebug()<<buffer.toHex()<<" Raw buffer data";
+        qDebug()<<buffer.size()<<" :size";
+    }
 
     if(msgId == 0x01)
     {
@@ -156,7 +162,7 @@ void serialPortHandler::readData()
         }
 
     }
-    if(msgId == 0x02)
+    else if(msgId == 0x02)
     {
         qDebug() << "msgId:" <<hex<<msgId;
 
@@ -176,6 +182,116 @@ void serialPortHandler::readData()
                                      +" "+buffer.toHex());
         }
 
+    }
+    else if(msgId == 0x03)
+    {
+        //qDebug() << "msgId:" << hex << msgId;
+
+        powerId = 0x03;
+        // -------- ACK Packet --------
+        if(buffer.size() >= 3 &&
+           static_cast<unsigned char>(buffer[0]) == 0x41 &&
+           static_cast<unsigned char>(buffer[1]) == 0x42 &&
+           static_cast<unsigned char>(buffer[2]) == 0x43)
+        {
+            powerId = 0x04;
+
+            executeWriteToNotes(
+                "ADC ACK received: "
+                + buffer.left(3).toHex()
+            );
+
+            ResponseData = "ADC_1_TIME"+buffer;
+            // Remove ACK from buffer
+            buffer.remove(0, 3);
+        }
+
+        // -------- ADC Streaming Packet --------
+        while(buffer.size() >= 4)
+        {
+            // Validate packet
+            if(static_cast<unsigned char>(buffer[0]) == 0xAA &&
+               static_cast<unsigned char>(buffer[3]) == 0xFF)
+            {
+                QByteArray adcPacket =
+                        buffer.left(4);
+
+                ResponseData = adcPacket;
+
+                emit guiDisplay("DATA"+ResponseData);
+
+                // Remove processed packet
+                buffer.remove(0, 4);
+            }
+            else
+            {
+                // Bad synchronization
+                executeWriteToNotes(
+                    "Invalid ADC byte dropped: "
+                    + buffer.left(1).toHex()
+                );
+
+                // Shift buffer by one byte
+                buffer.remove(0,1);
+            }
+        }
+    }
+    else if(msgId == 0x04)
+    {
+        qDebug() << "msgId:" << hex << msgId;
+
+        powerId = 0x04;
+
+        // Keep searching until ACK found
+        while(buffer.size() >= 3)
+        {
+            // ACK Found
+            if(static_cast<unsigned char>(buffer[0]) == 0x41 &&
+               static_cast<unsigned char>(buffer[1]) == 0x42 &&
+               static_cast<unsigned char>(buffer[2]) == 0x43)
+            {
+
+                ResponseData =
+                        buffer.left(3);
+
+                executeWriteToNotes(
+                    "Stop ADC ACK received bytes: "
+                    + ResponseData.toHex()
+                );
+
+                // Remove ACK
+                buffer.remove(0, 3);
+
+                break;
+            }
+
+            // Ignore leftover ADC packet
+            else if(buffer.size() >= 4 &&
+                    static_cast<unsigned char>(buffer[0]) == 0xAA &&
+                    static_cast<unsigned char>(buffer[3]) == 0xFF)
+            {
+                QByteArray adcPacket =
+                        buffer.left(4);
+
+                executeWriteToNotes(
+                    "Ignored leftover ADC packet: "
+                    + adcPacket.toHex()
+                );
+
+                // Remove ADC packet
+                buffer.remove(0,4);
+            }
+            else
+            {
+                // Unknown garbage byte
+                executeWriteToNotes(
+                    "Dropped invalid byte: "
+                    + buffer.left(1).toHex()
+                );
+
+                buffer.remove(0,1);
+            }
+        }
     }
     else
     {
@@ -197,6 +313,23 @@ void serialPortHandler::readData()
     {
         //pwm response
         emit guiDisplay("PWM"+ResponseData);
+    }
+        break;
+
+    case 0x03:
+    {
+        //adc read response
+        if(ResponseData.contains("ADC_1_TIME"))
+        {
+            emit guiDisplay("ADC_ON"+ResponseData);
+        }
+    }
+        break;
+
+    case 0x04:
+    {
+        //adc stop response
+        emit guiDisplay("ADC_OFF"+ResponseData);
     }
         break;
 

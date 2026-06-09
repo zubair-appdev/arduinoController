@@ -50,8 +50,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     writeToNotes("Pointer Size: "+QString::number(sizeof(void *))+" If it is 8 : 64 bit else 4 means 32 bit");
 
+    applyScrollArea();
+
     //Initializations
     ui->radioButton_pwmManual->setChecked(true);
+
+    initializePlots();
 
 }
 
@@ -146,7 +150,7 @@ void MainWindow::handleTimeout()
 void MainWindow::onDataReceived()
 {
     // Stop the timer since data has been received
-    qDebug()<<"Hello stop it";
+    //qDebug()<<"Hello stop it";
     if (responseTimer->isActive()) {
         responseTimer->stop();
     }
@@ -318,6 +322,77 @@ void MainWindow::blinkLabel(QLabel *label,
     timer->start(durationMs);
 }
 
+void MainWindow::applyScrollArea()
+{
+    //In scroll area
+    // Only retrieve and embed the central widget in a scroll area
+    QWidget *existingCentralWidget = takeCentralWidget(); // Take the existing central widget
+    QScrollArea *scrollArea = new QScrollArea(this);
+    scrollArea->setWidget(existingCentralWidget);         // Embed it in the scroll area
+    scrollArea->setWidgetResizable(true);                 // Allow resizing within the scroll area
+
+    // Set the scroll area as the new central widget
+    setCentralWidget(scrollArea);
+}
+
+void MainWindow::initializePlots()
+{
+    ui->label_percent->setText(QString("Battery %1% Voltage %2V").arg(0).arg(0));
+
+    ui->customPlot_adc->clearGraphs();
+    ui->customPlot_adc->clearItems();
+
+    ui->customPlot_adc->addGraph();
+
+    auto graph = ui->customPlot_adc->graph(0);
+
+    graph->setPen(QPen(Qt::darkGreen));
+
+    //Setting Labels
+    ui->customPlot_adc->xAxis->setLabel("Time(msec)");
+    ui->customPlot_adc->yAxis->setLabel("Voltage(V)");
+
+    ui->customPlot_adc->yAxis->setRange(0,5);
+
+    //Enable Interactions
+    ui->customPlot_adc->setInteractions(QCP::iRangeDrag |
+                                        QCP::iRangeZoom);
+
+    ui->customPlot_adc->replot();
+}
+
+void MainWindow::plotADC_voltage(quint64 count,
+                                 float voltage)
+{
+    auto graph = ui->customPlot_adc->graph(0);
+
+    graph->addData(count,voltage);
+
+    quint64 lowerBound = 0;
+
+    quint64 msec = 30000; //30 Sec plot
+
+    if(count > msec)
+    {
+        lowerBound = count - msec;
+
+        if(count % 1000 == 0)
+        {
+            graph->data()->removeBefore(lowerBound);
+        }
+    }
+
+    ui->customPlot_adc->xAxis->setRange(
+                count,msec,Qt::AlignRight);
+
+    if(count % msec == 0)
+    {
+         ui->customPlot_adc->yAxis->setRange(0,5);
+    }
+
+    ui->customPlot_adc->replot(
+                QCustomPlot::rpQueuedReplot);
+}
 
 void MainWindow::portStatus(const QString &data)
 {
@@ -326,7 +401,7 @@ void MainWindow::portStatus(const QString &data)
         QMessageBox::critical(this,"Port Error","Please Select Port Using Above Dropdown");
     }
 
-    if(data.startsWith("Serial port ") && data.endsWith(" opened successfully at baud rate 9600"))
+    if(data.startsWith("Serial port ") && data.endsWith(" opened successfully at baud rate 115200"))
     {
         QMessageBox::information(this,"Success",data);
     }
@@ -350,6 +425,56 @@ void MainWindow::showGuiData(const QByteArray &byteArrayData)
     else if(data.startsWith("PWM"))
     {
         blinkLabel(ui->label_pwm,400,"ACK");
+    }
+    else if(data.startsWith("ADC_ON"))
+    {
+        blinkLabel(ui->label_adc,400,"ACK");
+    }
+    else if(data.startsWith("DATA"))
+    {
+        QByteArray processed = data.mid(4);
+
+        quint8 lsb =
+            static_cast<quint8>(
+                processed[1]);
+
+        quint8 msb =
+            static_cast<quint8>(
+                processed[2]);
+
+        quint16 adcValue =
+                (msb << 8) | lsb;
+
+        // Convert ADC -> Voltage
+        float voltage =
+                (adcValue * 5.0f) / 1023.0f;
+
+//        qDebug() << "ADC:"
+//                 << adcValue
+//                 << "Voltage:"
+//                 << QString::number(
+//                        voltage,
+//                        'f',
+//                        2)
+//                 << "V";
+
+
+        // Convert Voltage -> Battery %
+        int batteryPercent =
+                qRound((voltage / 3.3f) * 100.0f);
+
+        if(count % 200 == 0)
+        {
+        ui->label_percent->setText(QString("Battery %1% Voltage %2V")
+                                   .arg(batteryPercent).arg(QString::number(voltage,'f',2)));
+        }
+
+        plotADC_voltage(count+=2,voltage);
+
+    }
+    else if(data.startsWith("ADC_OFF"))
+    {
+        blinkLabel(ui->label_adc,400,"ACK");
     }
     else
     {
@@ -522,5 +647,71 @@ void MainWindow::on_pushButton_PWM_clicked()
 
 
     emit sendMsgId(0x02);
+    serialObj->writeData(command);
+}
+
+void MainWindow::on_pushButton_readADC_clicked()
+{
+    // Start the timeout timer
+    responseTimer->start(2000); // 2 Sec timer
+
+    count = 0;
+
+    QByteArray command;
+
+    command.append(0xAA); //0
+    command.append(0xBB); //1
+    command.append(0xCC); //2 Header bytes
+
+    command.append(0x03); //3 Cmd Id
+
+    command.append(static_cast<quint8>(0x00)); //4
+    command.append(static_cast<quint8>(0x00)); //5
+    command.append(static_cast<quint8>(0x00)); //6
+    command.append(static_cast<quint8>(0x00)); //7
+    command.append(static_cast<quint8>(0x00)); //8 dummy bytes
+
+    command.append(0xDD); //9
+    command.append(0xEE); //10
+    command.append(0xFF); //11 Footer bytes
+
+
+    qDebug() << "ADC Read cmd sent : " + hexBytes(command);
+    writeToNotes("ADC Read cmd sent : " + hexBytes(command));
+
+
+    emit sendMsgId(0x03);
+    serialObj->writeData(command);
+}
+
+void MainWindow::on_pushButton_stopADC_clicked()
+{
+    // Start the timeout timer
+    responseTimer->start(2000); // 2 Sec timer
+
+    QByteArray command;
+
+    command.append(0xAA); //0
+    command.append(0xBB); //1
+    command.append(0xCC); //2 Header bytes
+
+    command.append(0x04); //3 Cmd Id
+
+    command.append(static_cast<quint8>(0x00)); //4
+    command.append(static_cast<quint8>(0x00)); //5
+    command.append(static_cast<quint8>(0x00)); //6
+    command.append(static_cast<quint8>(0x00)); //7
+    command.append(static_cast<quint8>(0x00)); //8 dummy bytes
+
+    command.append(0xDD); //9
+    command.append(0xEE); //10
+    command.append(0xFF); //11 Footer bytes
+
+
+    qDebug() << "Stop ADC cmd sent : " + hexBytes(command);
+    writeToNotes("Stop ADC  cmd sent : " + hexBytes(command));
+
+
+    emit sendMsgId(0x04);
     serialObj->writeData(command);
 }

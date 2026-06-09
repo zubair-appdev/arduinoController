@@ -21,10 +21,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
+    qcustomplot.cpp \
     serialporthandler.cpp
 
 HEADERS += \
     mainwindow.h \
+    qcustomplot.h \
     serialporthandler.h
 
 FORMS += \

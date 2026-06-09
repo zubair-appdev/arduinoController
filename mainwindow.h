@@ -21,7 +21,7 @@
 #include <QScreen>
 #include <QInputDialog>
 
-
+#include <QScrollArea>
 
 
 QT_BEGIN_NAMESPACE
@@ -69,6 +69,12 @@ public:
                     int durationMs,
                     const QString &text);
 
+    void applyScrollArea();
+
+    void initializePlots();
+
+    void plotADC_voltage(quint64 count, float voltage);
+
 private slots:
     void onPortSelected(const QString &portName);
 
@@ -87,6 +93,10 @@ private slots:
     void on_pushButton_led_clicked();
 
     void on_pushButton_PWM_clicked();
+
+    void on_pushButton_readADC_clicked();
+
+    void on_pushButton_stopADC_clicked();
 
 signals:
     void sendMsgId(quint8 id);
@@ -107,5 +117,7 @@ private:
 
     //blinkLabel timers
     QHash<QLabel*, QTimer*> blinkTimers;
+
+    quint64 count = 0;
 };
 #endif // MAINWINDOW_H
