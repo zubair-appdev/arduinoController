@@ -225,16 +225,16 @@ QDialog* MainWindow::createPleaseWaitDialog(const QString &text, int timeSeconds
 
     // --- Styling ---
     dlg->setStyleSheet(R"(
-        QDialog {
-            background-color: #f8f8f8;
-            border: 2px solid #0078D7;
-            border-radius: 8px;
-        }
-        QLabel {
-            font-size: 16px;
-            padding: 10px;
-        }
-    )");
+                       QDialog {
+                       background-color: #f8f8f8;
+                       border: 2px solid #0078D7;
+                       border-radius: 8px;
+                       }
+                       QLabel {
+                       font-size: 16px;
+                       padding: 10px;
+                       }
+                       )");
 
     // --- Layout and main label ---
     QVBoxLayout *layout = new QVBoxLayout(dlg);
@@ -387,7 +387,7 @@ void MainWindow::plotADC_voltage(quint64 count,
 
     if(count % msec == 0)
     {
-         ui->customPlot_adc->yAxis->setRange(0,5);
+        ui->customPlot_adc->yAxis->setRange(0,5);
     }
 
     ui->customPlot_adc->replot(
@@ -435,12 +435,12 @@ void MainWindow::showGuiData(const QByteArray &byteArrayData)
         QByteArray processed = data.mid(4);
 
         quint8 lsb =
-            static_cast<quint8>(
-                processed[1]);
+                static_cast<quint8>(
+                    processed[1]);
 
         quint8 msb =
-            static_cast<quint8>(
-                processed[2]);
+                static_cast<quint8>(
+                    processed[2]);
 
         quint16 adcValue =
                 (msb << 8) | lsb;
@@ -449,24 +449,40 @@ void MainWindow::showGuiData(const QByteArray &byteArrayData)
         float voltage =
                 (adcValue * 5.0f) / 1023.0f;
 
-//        qDebug() << "ADC:"
-//                 << adcValue
-//                 << "Voltage:"
-//                 << QString::number(
-//                        voltage,
-//                        'f',
-//                        2)
-//                 << "V";
+        //        qDebug() << "ADC:"
+        //                 << adcValue
+        //                 << "Voltage:"
+        //                 << QString::number(
+        //                        voltage,
+        //                        'f',
+        //                        2)
+        //                 << "V";
 
 
         // Convert Voltage -> Battery %
         int batteryPercent =
-                qRound((voltage / 3.3f) * 100.0f);
+                qRound((voltage / ui->doubleSpinBox_refVoltage->value())
+                       * 100.0f);
 
         if(count % 200 == 0)
         {
-        ui->label_percent->setText(QString("Battery %1% Voltage %2V")
-                                   .arg(batteryPercent).arg(QString::number(voltage,'f',2)));
+            if(batteryPercent > 100)
+            {
+                ui->label_percent->setStyleSheet("border : 2px solid black;"
+                                                 "border-radius : 3px;"
+                                                 "padding : 2px;"
+                                                 "background-color : #e50d2a;");
+            }
+            else
+            {
+                ui->label_percent->setStyleSheet("border : 2px solid black;"
+                                                 "border-radius : 3px;"
+                                                 "padding : 2px;"
+                                                 "background-color : #ceffd0;");
+            }
+
+            ui->label_percent->setText(QString("Battery %1% Voltage %2V")
+                                       .arg(batteryPercent).arg(QString::number(voltage,'f',2)));
         }
 
         plotADC_voltage(count+=2,voltage);
@@ -491,9 +507,9 @@ void MainWindow::on_pushButton_calibrateScreen_clicked()
     QSettings settings("settings.ini", QSettings::IniFormat);
 
     QMessageBox::StandardButton choice = QMessageBox::question(
-        this, "Calibrate Screen",
-        "Do you want to enter custom screen details (width, height, diagonal) or reset to system default?",
-        QMessageBox::Yes | QMessageBox::No);
+                this, "Calibrate Screen",
+                "Do you want to enter custom screen details (width, height, diagonal) or reset to system default?",
+                QMessageBox::Yes | QMessageBox::No);
 
     if (choice == QMessageBox::No) {
         // Reset to default
@@ -519,9 +535,9 @@ void MainWindow::on_pushButton_calibrateScreen_clicked()
     if (!ok) return;
 
     double diagonalInches = QInputDialog::getDouble(
-        this, "Screen Diagonal",
-        "Enter screen diagonal size (in inches):",
-        settings.value("Display/diagonal", 14.0).toDouble(), 3.0, 100.0, 1, &ok);
+                this, "Screen Diagonal",
+                "Enter screen diagonal size (in inches):",
+                settings.value("Display/diagonal", 14.0).toDouble(), 3.0, 100.0, 1, &ok);
     if (!ok) return;
 
     // Calculate DPI

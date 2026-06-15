@@ -3,3 +3,6 @@ Ver 1.0 -----------------------------------------------------
 
 Ver 1.1 ----------------------------------------------------
 - Reading adc values and plotting completed.
+
+Ver 1.2 ---------------------------------------------------
+- Color change for battery extremes and ref voltage input box.
