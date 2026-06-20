@@ -9,3 +9,6 @@ Ver 1.2 ---------------------------------------------------
 
 Ver 1.3 --------------------------------------------------
 - Interrupt mode added.
+
+Ver 1.4 -------------------------------------------------
+- Hardware timer is added and data shown in text edit ( a timer of 6ms )

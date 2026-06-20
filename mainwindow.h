@@ -100,6 +100,12 @@ private slots:
 
     void on_pushButton_interrupt_clicked();
 
+    void on_pushButton_hardwareTimerOn_clicked();
+
+    void on_pushButton_hardwareTimerOff_clicked();
+
+    void on_pushButton_clear_2_clicked();
+
 signals:
     void sendMsgId(quint8 id);
 

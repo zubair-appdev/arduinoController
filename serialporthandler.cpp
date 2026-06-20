@@ -104,10 +104,16 @@ QString serialPortHandler::hexBytesSerial(QByteArray &cmd)
 
 void serialPortHandler::readData()
 {
-    if(id != 0x03)
+    if(id == 0x03 || id == 0x06)
+    {
+        // do nothing
+    }
+    else
     {
         qDebug()<<"------------------------------------------------------------------------------------";
+
     }
+
     QByteArray ResponseData;
 
     // Read data from the serial port
@@ -135,7 +141,7 @@ void serialPortHandler::readData()
     //powerId to avoid that warning QByteRef calling out of bond error
     quint8 powerId = 0x00;
 
-    if(msgId != 0x03 && msgId != 0x05)
+    if(msgId != 0x03 && msgId != 0x05 && msgId != 0x06)
     {
         qDebug()<<buffer.toHex()<<" Raw buffer data";
         qDebug()<<buffer.size()<<" :size";
@@ -380,6 +386,109 @@ void serialPortHandler::readData()
             }
         }
     }
+    else if(msgId == 0x06)
+    {
+        // -------- ACK --------
+        if(buffer.size() >= 3 &&
+           static_cast<unsigned char>(buffer[0]) == 0x41 &&
+           static_cast<unsigned char>(buffer[1]) == 0x42 &&
+           static_cast<unsigned char>(buffer[2]) == 0x43)
+        {
+            powerId = 0x06;
+
+            ResponseData = buffer.left(3);
+
+            executeWriteToNotes(
+                "Hardware Timer ACK received: "
+                + ResponseData.toHex());
+
+            emit guiDisplay(
+                "HT_ON" + ResponseData);
+
+            buffer.remove(0,3);
+        }
+
+        // -------- TIMER PACKETS --------
+        while(buffer.size() >= 4)
+        {
+            if(static_cast<unsigned char>(buffer[0]) == 0x11 &&
+               static_cast<unsigned char>(buffer[1]) == 0x22 &&
+               static_cast<unsigned char>(buffer[2]) == 0x33 &&
+               static_cast<unsigned char>(buffer[3]) == 0x44)
+            {
+                powerId = 0x06;
+
+                ResponseData =
+                        buffer.left(4);
+
+                emit guiDisplay(
+                    "TIMER_PACKET" +
+                    ResponseData);
+
+                buffer.remove(0,4);
+            }
+            else
+            {
+                executeWriteToNotes(
+                    "Invalid Timer byte dropped: "
+                    + buffer.left(1).toHex());
+
+                buffer.remove(0,1);
+            }
+        }
+    }
+    else if(msgId == 0x07)
+    {
+        qDebug() << "msgId:" <<hex<<msgId;
+
+        // Keep searching until ACK found
+        while(buffer.size() >= 3)
+        {
+            // Hardware Timer STOP ACK
+            if(buffer.size() >= 3 &&
+               static_cast<unsigned char>(buffer[0]) == 0x41 &&
+               static_cast<unsigned char>(buffer[1]) == 0x42 &&
+               static_cast<unsigned char>(buffer[2]) == 0x43)
+            {
+                powerId = 0x07;
+
+                ResponseData = buffer.left(3);
+
+                executeWriteToNotes(
+                    "Stop Hardware Timer ACK received bytes: "
+                    + ResponseData.toHex());
+
+                buffer.remove(0,3);
+
+                break;
+            }
+
+            // Leftover ADC packet
+            else if(buffer.size() >= 4 &&
+                    static_cast<unsigned char>(buffer[0]) == 0xAA &&
+                    static_cast<unsigned char>(buffer[3]) == 0xFF)
+            {
+                QByteArray TimerPacket = buffer.left(4);
+
+                executeWriteToNotes(
+                    "Ignored leftover Timer packet: "
+                    + TimerPacket.toHex());
+
+                buffer.remove(0,4);
+            }
+
+            // Garbage
+            else
+            {
+                executeWriteToNotes(
+                    "Dropped invalid Timer  byte: "
+                    + buffer.left(1).toHex());
+
+                buffer.remove(0,1);
+            }
+        }
+
+    }
     else
     {
         //do nothing
@@ -422,6 +531,19 @@ void serialPortHandler::readData()
     {
         //Interrupt stop response
         emit guiDisplay("INTERRUPT"+ResponseData);
+    }
+        break;
+
+    case 0x06:
+    {
+        //do nothing
+    }
+        break;
+
+    case 0x07:
+    {
+        //Hardware Timer OFF response
+        emit guiDisplay("HT_OFF"+ResponseData);
     }
         break;
 

@@ -496,6 +496,41 @@ void MainWindow::showGuiData(const QByteArray &byteArrayData)
     {
         blinkLabel(ui->label_interrupt,400,"ACK");
     }
+    else if(data.startsWith("HT_ON"))
+    {
+        blinkLabel(ui->label_timer,400,"ACK");
+    }
+    else if(data.startsWith("TIMER_PACKET"))
+    {
+        static QElapsedTimer timer;
+
+        if(!timer.isValid())
+        {
+            timer.start();
+        }
+        else
+        {
+            qint64 ns =
+                    timer.nsecsElapsed();
+
+            timer.restart();
+
+            static int counter = 0;
+
+            if(++counter >= ui->spinBox_freq->value())
+            {
+                counter = 0;
+                ui->textEdit_timerDump->append(
+                            QString::number(ns / 1e6, 'f', 3) + " ms");
+
+                ui->textEdit_timerDump->moveCursor(QTextCursor::End);
+            }
+        }
+    }
+    else if(data.startsWith("HT_OFF"))
+    {
+        blinkLabel(ui->label_timer,400,"ACK");
+    }
     else
     {
         qDebug()<<"Error #001";
@@ -672,6 +707,14 @@ void MainWindow::on_pushButton_PWM_clicked()
 
 void MainWindow::on_pushButton_readADC_clicked()
 {
+    if(ui->tabWidget->currentWidget() != ui->tab_voltage)
+    {
+        QMessageBox::warning(this,"Select Voltage Tab"," Please Select"
+                                                     " Voltage Tab and "
+                                                     "proceed");
+        return;
+    }
+
     // Start the timeout timer
     responseTimer->start(2000); // 2 Sec timer
 
@@ -739,4 +782,81 @@ void MainWindow::on_pushButton_stopADC_clicked()
 void MainWindow::on_pushButton_interrupt_clicked()
 {
     emit sendMsgId(0x05);
+}
+
+void MainWindow::on_pushButton_hardwareTimerOn_clicked()
+{
+    if(ui->tabWidget->currentWidget() != ui->tab_timer)
+    {
+        QMessageBox::warning(this,"Select Timer Tab"," Please Select"
+                                                     " Timer Tab and "
+                                                     "proceed");
+        return;
+    }
+    // Start the timeout timer
+    responseTimer->start(2000); // 2 Sec timer
+
+    QByteArray command;
+
+    command.append(0xAA); //0
+    command.append(0xBB); //1
+    command.append(0xCC); //2 Header bytes
+
+    command.append(0x06); //3 Cmd Id
+
+    command.append(static_cast<quint8>(0x00)); //4
+    command.append(static_cast<quint8>(0x00)); //5
+    command.append(static_cast<quint8>(0x00)); //6
+    command.append(static_cast<quint8>(0x00)); //7
+    command.append(static_cast<quint8>(0x00)); //8 dummy bytes
+
+    command.append(0xDD); //9
+    command.append(0xEE); //10
+    command.append(0xFF); //11 Footer bytes
+
+
+    qDebug() << "Hardware Timer On cmd sent : " + hexBytes(command);
+    writeToNotes("Hardware Timer On  cmd sent : " + hexBytes(command));
+
+
+    emit sendMsgId(0x06);
+    serialObj->writeData(command);
+}
+
+void MainWindow::on_pushButton_hardwareTimerOff_clicked()
+{
+    // Start the timeout timer
+    responseTimer->start(2000); // 2 Sec timer
+
+    QByteArray command;
+
+    command.append(0xAA); //0
+    command.append(0xBB); //1
+    command.append(0xCC); //2 Header bytes
+
+    command.append(0x07); //3 Cmd Id
+
+    command.append(static_cast<quint8>(0x00)); //4
+    command.append(static_cast<quint8>(0x00)); //5
+    command.append(static_cast<quint8>(0x00)); //6
+    command.append(static_cast<quint8>(0x00)); //7
+    command.append(static_cast<quint8>(0x00)); //8 dummy bytes
+
+    command.append(0xDD); //9
+    command.append(0xEE); //10
+    command.append(0xFF); //11 Footer bytes
+
+
+    qDebug() << "Hardware Timer Off cmd sent : " + hexBytes(command);
+    writeToNotes("Hardware Timer Off  cmd sent : " + hexBytes(command));
+
+
+    emit sendMsgId(0x07);
+    serialObj->writeData(command);
+}
+
+
+void MainWindow::on_pushButton_clear_2_clicked()
+{
+    ui->textEdit_timerDump->clear();
 }
