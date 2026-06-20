@@ -123,8 +123,8 @@ void serialPortHandler::readData()
     if (serial->bytesAvailable() < std::numeric_limits<int>::max()) {
         buffer.append(serial->readAll()); // Append only if it won't exceed max size
         if (!buffer.isEmpty()) {
-                emit dataReceived(); // Signal data has been received
-            }
+            emit dataReceived(); // Signal data has been received
+        }
     } else {
         qWarning() << "Attempt to append too much data to QByteArray!";
         return;
@@ -135,7 +135,7 @@ void serialPortHandler::readData()
     //powerId to avoid that warning QByteRef calling out of bond error
     quint8 powerId = 0x00;
 
-    if(msgId != 0x03)
+    if(msgId != 0x03 && msgId != 0x05)
     {
         qDebug()<<buffer.toHex()<<" Raw buffer data";
         qDebug()<<buffer.size()<<" :size";
@@ -158,7 +158,7 @@ void serialPortHandler::readData()
         else
         {
             executeWriteToNotes("Required 3 bytes Received bytes: "+QString::number(buffer.size())
-                                     +" "+buffer.toHex());
+                                +" "+buffer.toHex());
         }
 
     }
@@ -179,37 +179,71 @@ void serialPortHandler::readData()
         else
         {
             executeWriteToNotes("Required 3 bytes Received bytes: "+QString::number(buffer.size())
-                                     +" "+buffer.toHex());
+                                +" "+buffer.toHex());
         }
 
     }
     else if(msgId == 0x03)
     {
-        //qDebug() << "msgId:" << hex << msgId;
 
-        powerId = 0x03;
-        // -------- ACK Packet --------
+        if(buffer.size() <= 3)
+        {
+            qDebug()<<"### SPECIAL CONDITION ###";
+            qDebug()<<buffer.toHex();
+        }
+        // -------- ADC START ACK --------
         if(buffer.size() >= 3 &&
            static_cast<unsigned char>(buffer[0]) == 0x41 &&
            static_cast<unsigned char>(buffer[1]) == 0x42 &&
            static_cast<unsigned char>(buffer[2]) == 0x43)
         {
-            powerId = 0x04;
+            powerId = 0x03;
 
             executeWriteToNotes(
                 "ADC ACK received: "
-                + buffer.left(3).toHex()
-            );
+                + buffer.left(3).toHex());
 
-            ResponseData = "ADC_1_TIME"+buffer;
-            // Remove ACK from buffer
+            ResponseData = "ADC_1_TIME" + buffer;
+            emit guiDisplay("ADC_ON"+ResponseData);
+
             buffer.remove(0, 3);
         }
 
-        // -------- ADC Streaming Packet --------
+        // -------- INTERRUPT ACK --------
+        while(buffer.size() >= 5)
+        {
+            if(static_cast<unsigned char>(buffer[0]) == 0x55 &&
+               static_cast<unsigned char>(buffer[1]) == 0x66 &&
+               static_cast<unsigned char>(buffer[2]) == 0x77 &&
+               static_cast<unsigned char>(buffer[3]) == 0x88 &&
+               static_cast<unsigned char>(buffer[4]) == 0x99)
+            {
+                powerId = 0x05;
+
+                ResponseData = buffer.left(5);
+
+                executeWriteToNotes(
+                    "INTERRUPT ACK received bytes: "
+                    + ResponseData.toHex());
+
+                emit guiDisplay(
+                    "INTERRUPT" + ResponseData);
+
+                buffer.remove(0,5);
+            }
+            else
+            {
+                powerId = 0x05;
+                break;
+            }
+        }
+
+        // -------- ADC STREAM --------
         while(buffer.size() >= 4)
         {
-            // Validate packet
+            powerId = 0x03;
+
+            // ADC Packet
             if(static_cast<unsigned char>(buffer[0]) == 0xAA &&
                static_cast<unsigned char>(buffer[3]) == 0xFF)
             {
@@ -218,78 +252,131 @@ void serialPortHandler::readData()
 
                 ResponseData = adcPacket;
 
-                emit guiDisplay("DATA"+ResponseData);
+                emit guiDisplay(
+                    "DATA" + ResponseData);
 
-                // Remove processed packet
-                buffer.remove(0, 4);
+                buffer.remove(0,4);
             }
+
+            // INTERRUPT Packet sneaked into stream
+            else if(buffer.size() >= 5 &&
+                    static_cast<unsigned char>(buffer[0]) == 0x55 &&
+                    static_cast<unsigned char>(buffer[1]) == 0x66 &&
+                    static_cast<unsigned char>(buffer[2]) == 0x77 &&
+                    static_cast<unsigned char>(buffer[3]) == 0x88 &&
+                    static_cast<unsigned char>(buffer[4]) == 0x99)
+            {
+                powerId = 0x05;
+
+                ResponseData = buffer.left(5);
+
+                executeWriteToNotes(
+                    "INTERRUPT ACK SNEAKED received bytes: "
+                    + ResponseData.toHex());
+
+                emit guiDisplay(
+                    "INTERRUPT" + ResponseData);
+
+                buffer.remove(0,5);
+            }
+
+            // Garbage
             else
             {
-                // Bad synchronization
                 executeWriteToNotes(
                     "Invalid ADC byte dropped: "
-                    + buffer.left(1).toHex()
-                );
+                    + buffer.left(1).toHex());
 
-                // Shift buffer by one byte
                 buffer.remove(0,1);
             }
         }
+
     }
     else if(msgId == 0x04)
     {
         qDebug() << "msgId:" << hex << msgId;
 
-        powerId = 0x04;
-
         // Keep searching until ACK found
         while(buffer.size() >= 3)
         {
-            // ACK Found
-            if(static_cast<unsigned char>(buffer[0]) == 0x41 &&
+            // ADC STOP ACK
+            if(buffer.size() >= 3 &&
+               static_cast<unsigned char>(buffer[0]) == 0x41 &&
                static_cast<unsigned char>(buffer[1]) == 0x42 &&
                static_cast<unsigned char>(buffer[2]) == 0x43)
             {
+                powerId = 0x04;
 
-                ResponseData =
-                        buffer.left(3);
+                ResponseData = buffer.left(3);
 
                 executeWriteToNotes(
                     "Stop ADC ACK received bytes: "
-                    + ResponseData.toHex()
-                );
+                    + ResponseData.toHex());
 
-                // Remove ACK
-                buffer.remove(0, 3);
+                buffer.remove(0,3);
 
                 break;
             }
 
-            // Ignore leftover ADC packet
+            // Leftover ADC packet
             else if(buffer.size() >= 4 &&
                     static_cast<unsigned char>(buffer[0]) == 0xAA &&
                     static_cast<unsigned char>(buffer[3]) == 0xFF)
             {
-                QByteArray adcPacket =
-                        buffer.left(4);
+                QByteArray adcPacket = buffer.left(4);
 
                 executeWriteToNotes(
                     "Ignored leftover ADC packet: "
-                    + adcPacket.toHex()
-                );
+                    + adcPacket.toHex());
 
-                // Remove ADC packet
                 buffer.remove(0,4);
+            }
+
+            // Garbage
+            else
+            {
+                executeWriteToNotes(
+                    "Dropped invalid byte: "
+                    + buffer.left(1).toHex());
+
+                buffer.remove(0,1);
+            }
+        }
+    }
+    else if(msgId == 0x05)
+    {
+        qDebug() << "msgId:" << hex << msgId;
+
+        powerId = 0x05;
+
+        while(buffer.size() >= 5)
+        {
+            if(static_cast<unsigned char>(buffer[0]) == 0x55 &&
+               static_cast<unsigned char>(buffer[1]) == 0x66 &&
+               static_cast<unsigned char>(buffer[2]) == 0x77 &&
+               static_cast<unsigned char>(buffer[3]) == 0x88 &&
+               static_cast<unsigned char>(buffer[4]) == 0x99)
+            {
+                ResponseData = buffer.left(5);
+
+                executeWriteToNotes(
+                    "External Interrupt received bytes: "
+                    + ResponseData.toHex());
+
+                emit guiDisplay(
+                    "INTERRUPT" + ResponseData);
+
+                // Remove processed packet
+                buffer.remove(0, 5);
             }
             else
             {
-                // Unknown garbage byte
                 executeWriteToNotes(
                     "Dropped invalid byte: "
-                    + buffer.left(1).toHex()
-                );
+                    + buffer.left(1).toHex());
 
-                buffer.remove(0,1);
+                // Resync
+                buffer.remove(0, 1);
             }
         }
     }
@@ -319,10 +406,8 @@ void serialPortHandler::readData()
     case 0x03:
     {
         //adc read response
-        if(ResponseData.contains("ADC_1_TIME"))
-        {
-            emit guiDisplay("ADC_ON"+ResponseData);
-        }
+
+       // do nothing
     }
         break;
 
@@ -330,6 +415,13 @@ void serialPortHandler::readData()
     {
         //adc stop response
         emit guiDisplay("ADC_OFF"+ResponseData);
+    }
+        break;
+
+    case 0x05:
+    {
+        //Interrupt stop response
+        emit guiDisplay("INTERRUPT"+ResponseData);
     }
         break;
 

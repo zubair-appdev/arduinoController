@@ -98,6 +98,8 @@ private slots:
 
     void on_pushButton_stopADC_clicked();
 
+    void on_pushButton_interrupt_clicked();
+
 signals:
     void sendMsgId(quint8 id);
 

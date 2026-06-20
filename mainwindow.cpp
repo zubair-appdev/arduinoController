@@ -492,6 +492,10 @@ void MainWindow::showGuiData(const QByteArray &byteArrayData)
     {
         blinkLabel(ui->label_adc,400,"ACK");
     }
+    else if(data.startsWith("INTERRUPT"))
+    {
+        blinkLabel(ui->label_interrupt,400,"ACK");
+    }
     else
     {
         qDebug()<<"Error #001";
@@ -730,4 +734,9 @@ void MainWindow::on_pushButton_stopADC_clicked()
 
     emit sendMsgId(0x04);
     serialObj->writeData(command);
+}
+
+void MainWindow::on_pushButton_interrupt_clicked()
+{
+    emit sendMsgId(0x05);
 }
