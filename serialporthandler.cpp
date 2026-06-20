@@ -463,10 +463,10 @@ void serialPortHandler::readData()
                 break;
             }
 
-            // Leftover ADC packet
+            // Leftover Timer packet
             else if(buffer.size() >= 4 &&
-                    static_cast<unsigned char>(buffer[0]) == 0xAA &&
-                    static_cast<unsigned char>(buffer[3]) == 0xFF)
+                    static_cast<unsigned char>(buffer[0]) == 0x11 &&
+                    static_cast<unsigned char>(buffer[3]) == 0x44)
             {
                 QByteArray TimerPacket = buffer.left(4);
 
